@@ -1,0 +1,14 @@
+{application, math_magic,
+ [
+  {description, "Simple sheep math example"},
+  {vsn, git},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib,
+                  lager,
+                  cowboy
+                 ]},
+  {mod, {math_magic_app, []}},
+  {env, []}
+ ]}.

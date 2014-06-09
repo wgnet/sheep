@@ -1,0 +1,16 @@
+lists:foreach(
+    fun(Dir)->
+        case file:list_dir(Dir) of
+            {ok, Modules} ->
+                lists:foreach(fun(Module) ->
+                                      code:add_patha(Dir ++ "/" ++ Module ++ "/ebin"),
+                                      code:add_patha(Dir ++ "/" ++ Module ++ "/src")
+                              end, Modules);
+            _ -> ok
+        end
+    end,
+    ["deps"]
+).
+
+code:add_patha("ebin").
+code:add_patha("src").

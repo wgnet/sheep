@@ -46,7 +46,7 @@ param(Params, Name, Type, Default) when is_atom(Name) ->
     param(Params, atom_to_binary(Name, utf8), Type, Default);
 
 param(Params, Name, Type, Default) when is_list(Name) ->
-    param(Params, list_to_binary(Name), Type, Default);
+    param(Params, unicode:characters_to_binary(Name, utf8), Type, Default);
 
 param({Params}, Name, Type, Default) ->
     case lists:keyfind(Name, 1, Params) of
@@ -60,7 +60,7 @@ param(Params, Name, Type) when is_atom(Name) ->
     param(Params, atom_to_binary(Name, utf8), Type);
 
 param(Params, Name, Type) when is_list(Name) ->
-    param(Params, list_to_binary(Name), Type);
+    param(Params, unicode:characters_to_binary(Name, utf8), Type);
 
 param({Params}, Name, Type) ->
     case lists:keyfind(Name, 1, Params) of
@@ -74,7 +74,7 @@ param(Params, Name) when is_atom(Name) ->
     param(Params, atom_to_binary(Name, utf8));
 
 param(Params, Name) when is_list(Name) ->
-    param(Params, list_to_binary(Name));
+    param(Params, unicode:characters_to_binary(Name, utf8));
 
 param({Params}, Name) ->
     case lists:keyfind(Name, 1, Params) of
@@ -86,7 +86,7 @@ validate(Name, Value, Type) when is_atom(Name) ->
     validate(atom_to_binary(Name, utf8), Value, Type);
 
 validate(Name, Value, Type) when is_list(Name) ->
-    validate(list_to_binary(Name), Value, Type);
+    validate(unicode:characters_to_binary(Name, utf8), Value, Type);
 
 validate(Name, Value, Fun) when is_function(Fun) ->
     ValidateResult = Fun(Value),
@@ -203,6 +203,6 @@ normalize_key(Key) when is_atom(Key) ->
     atom_to_binary(Key, utf8);
 
 normalize_key(Key) when is_list(Key) ->
-    list_to_binary(Key);
+    unicode:characters_to_binary(Key, utf8);
 
 normalize_key(Key) -> Key.

@@ -10,9 +10,9 @@ error(_Req, Tag, Message, Error, Stacktrace) ->
     lager:error("~p: ~p ~p ~p", [Tag, Message, Error, Stacktrace]).
 
 read(_, QueryParams, _) ->
-    X = sheep:param(QueryParams, <<"x">>, integer),
-    Y = sheep:param(QueryParams, <<"y">>, integer),
-    Operation = sheep:param(QueryParams, <<"operation">>,
+    X = sheep:param(QueryParams, x, integer),
+    Y = sheep:param(QueryParams, y, integer),
+    Operation = sheep:param(QueryParams, operation,
                             fun(O) ->
                                     O == <<"plus">> orelse O == <<"minus">>
                             end),

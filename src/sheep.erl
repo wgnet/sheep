@@ -42,6 +42,12 @@ process_error(Req, AcceptContentType, Handler, Tag, Code, Message, Error) ->
     {ok, ReqE} = spit_response(Req, Code, {[{<<"tag">>, Tag}, {<<"message">>, Message}]}, AcceptContentType),
     {ok, ReqE}.
 
+param(Params, Name, Type, Default) when is_atom(Name) ->
+    param(Params, atom_to_binary(Name, utf8), Type, Default);
+
+param(Params, Name, Type, Default) when is_list(Name) ->
+    param(Params, list_to_binary(Name), Type, Default);
+
 param({Params}, Name, Type, Default) ->
     case lists:keyfind(Name, 1, Params) of
         false -> Default;
@@ -49,6 +55,12 @@ param({Params}, Name, Type, Default) ->
             ok = validate(Name, Value, Type),
             Value
     end.
+
+param(Params, Name, Type) when is_atom(Name) ->
+    param(Params, atom_to_binary(Name, utf8), Type);
+
+param(Params, Name, Type) when is_list(Name) ->
+    param(Params, list_to_binary(Name), Type);
 
 param({Params}, Name, Type) ->
     case lists:keyfind(Name, 1, Params) of
@@ -58,11 +70,23 @@ param({Params}, Name, Type) ->
             Value
     end.
 
+param(Params, Name) when is_atom(Name) ->
+    param(Params, atom_to_binary(Name, utf8));
+
+param(Params, Name) when is_list(Name) ->
+    param(Params, list_to_binary(Name));
+
 param({Params}, Name) ->
     case lists:keyfind(Name, 1, Params) of
         false -> throw({sheep, sheep, 400, <<<<"Param ">>/binary, Name/binary, <<" is mandatory">>/binary>>});
         {Name, Value} -> Value
     end.
+
+validate(Name, Value, Type) when is_atom(Name) ->
+    validate(atom_to_binary(Name, utf8), Value, Type);
+
+validate(Name, Value, Type) when is_list(Name) ->
+    validate(list_to_binary(Name), Value, Type);
 
 validate(Name, Value, Fun) when is_function(Fun) ->
     ValidateResult = Fun(Value),
@@ -177,5 +201,8 @@ normalize_params(Value) -> Value.
 
 normalize_key(Key) when is_atom(Key) ->
     atom_to_binary(Key, utf8);
+
+normalize_key(Key) when is_list(Key) ->
+    list_to_binary(Key);
 
 normalize_key(Key) -> Key.

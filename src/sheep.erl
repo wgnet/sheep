@@ -3,7 +3,7 @@
 -behaviour(cowboy_sub_protocol).
 
 -export([upgrade/4]).
--export([param/4, param/3, param/2, validate/3, filter_params/2, parse_payload/2, generate_payload/2]).
+-export([param/5, param/4, validate/4, filter_params/2, parse_payload/2, generate_payload/2]).
 
 upgrade(Req, Env, Handler, HandlerOpts) ->
     {ContentType, Req1} = cowboy_req:header(<<"content-type">>, Req, <<"application/json">>),
@@ -19,108 +19,79 @@ upgrade(Req, Env, Handler, HandlerOpts) ->
             {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag, Code, Message, null),
             {ok, ReqE, Env};
         _:Error ->
-            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, sheep, 500, <<"Unexpected error">>, Error),
+            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, sheep, 500, <<"unexpected error">>, Error),
             {ok, ReqE, Env}
     end.
 
 handler_fun(Req, Handler, HandlerOpts) ->
     {Method, Req1} = cowboy_req:method(Req),
     case lists:keyfind(Method, 1, HandlerOpts ++ [{<<"POST">>, create}, {<<"GET">>, read}, {<<"PUT">>, update}, {<<"DELETE">>, delete}]) of
-        false -> throw({sheep, sheep, 405, <<"Unknown request">>});
+        false -> throw({sheep, sheep, 405, <<"unknown request">>});
         {Method, HandlerFun} ->
             case erlang:function_exported(Handler, HandlerFun, 3) of
                 true -> {ok, HandlerFun, Req1};
-                false -> throw({sheep, sheep, 405, <<"Unknown request">>})
+                false -> throw({sheep, sheep, 405, <<"unknown request">>})
             end
     end.
 
 process_error(Req, AcceptContentType, Handler, Tag, Code, Message, Error) ->
-    case erlang:function_exported(Handler, error, 5) of
-        true -> Handler:error(Req, Tag, Message, Error, erlang:get_stacktrace());
-        false -> ok
-    end,
-    {ok, ReqE} = spit_response(Req, Code, {[{<<"tag">>, Tag}, {<<"message">>, Message}]}, AcceptContentType),
-    {ok, ReqE}.
+    ResponseContent = case erlang:function_exported(Handler, error_handler, 5) of
+                          true -> Handler:error_handler(Req, Tag, Code, Message, Error);
+                          false -> {[{<<"tag">>, Tag}, {<<"message">>, Message}]}
+                      end,
+    spit_response(Req, Code, ResponseContent, AcceptContentType).
 
-param(Params, Name, Type, Default) when is_atom(Name) ->
-    param(Params, atom_to_binary(Name, utf8), Type, Default);
-
-param(Params, Name, Type, Default) when is_list(Name) ->
-    param(Params, unicode:characters_to_binary(Name, utf8), Type, Default);
-
-param({Params}, Name, Type, Default) ->
-    case lists:keyfind(Name, 1, Params) of
+param({Params}, Name, Type, Default, ErrorFun) ->
+    NormalizedName = normalize_key(Name),
+    case lists:keyfind(NormalizedName, 1, Params) of
         false -> Default;
-        {Name, Value} ->
-            ok = validate(Name, Value, Type),
+        {NormalizedName, Value} ->
+            ok = validate(NormalizedName, Value, Type, ErrorFun),
             Value
     end.
 
-param(Params, Name, Type) when is_atom(Name) ->
-    param(Params, atom_to_binary(Name, utf8), Type);
-
-param(Params, Name, Type) when is_list(Name) ->
-    param(Params, unicode:characters_to_binary(Name, utf8), Type);
-
-param({Params}, Name, Type) ->
-    case lists:keyfind(Name, 1, Params) of
-        false -> throw({sheep, sheep, 400, <<<<"Param ">>/binary, Name/binary, <<" is mandatory">>/binary>>});
-        {Name, Value} ->
-            ok = validate(Name, Value, Type),
+param({Params}, Name, Type, ErrorFun) ->
+    NormalizedName = normalize_key(Name),
+    case lists:keyfind(NormalizedName, 1, Params) of
+        false -> ErrorFun(missing, NormalizedName);
+        {NormalizedName, Value} ->
+            ok = validate(NormalizedName, Value, Type, ErrorFun),
             Value
     end.
 
-param(Params, Name) when is_atom(Name) ->
-    param(Params, atom_to_binary(Name, utf8));
-
-param(Params, Name) when is_list(Name) ->
-    param(Params, unicode:characters_to_binary(Name, utf8));
-
-param({Params}, Name) ->
-    case lists:keyfind(Name, 1, Params) of
-        false -> throw({sheep, sheep, 400, <<<<"Param ">>/binary, Name/binary, <<" is mandatory">>/binary>>});
-        {Name, Value} -> Value
-    end.
-
-validate(Name, Value, Type) when is_atom(Name) ->
-    validate(atom_to_binary(Name, utf8), Value, Type);
-
-validate(Name, Value, Type) when is_list(Name) ->
-    validate(unicode:characters_to_binary(Name, utf8), Value, Type);
-
-validate(Name, Value, Fun) when is_function(Fun) ->
-    ValidateResult = Fun(Value),
+validate(Name, Value, ValidateFun, ErrorFun) when is_function(ValidateFun) ->
+    ValidateResult = ValidateFun(Value),
     if
-        ValidateResult == false -> throw({sheep, sheep, 400, <<<<"Param ">>/binary, Name/binary, <<" is in wrong format">>/binary>>});
+        ValidateResult == false -> ErrorFun(wrong, normalize_key(Name));
         true -> ok
     end;
 
-validate(_Name, _Value, any) ->
+validate(_Name, _Value, any, _ErrorFun) ->
     ok;
 
-validate(Name, Value, binary) ->
-    ok = validate(Name, Value, fun is_binary/1);
+validate(Name, Value, binary, ErrorFun) ->
+    ok = validate(Name, Value, fun is_binary/1, ErrorFun);
 
-validate(Name, Value, integer) ->
-    ok = validate(Name, Value, fun is_integer/1);
+validate(Name, Value, integer, ErrorFun) ->
+    ok = validate(Name, Value, fun is_integer/1, ErrorFun);
 
-validate(Name, Value, float) ->
-    ok = validate(Name, Value, fun is_float/1);
+validate(Name, Value, float, ErrorFun) ->
+    ok = validate(Name, Value, fun is_float/1, ErrorFun);
 
-validate(Name, Value, boolean) ->
-    ok = validate(Name, Value, fun is_boolean/1);
+validate(Name, Value, boolean, ErrorFun) ->
+    ok = validate(Name, Value, fun is_boolean/1, ErrorFun);
 
-validate(Name, Value, {KeyType, ValueType}) ->
+validate(Name, Value, {KeyType, ValueType}, ErrorFun) ->
     case Value of
         {Key, Value} ->
-            ok = validate(Name, Key, KeyType),
-            ok = validate(Name, Value, ValueType);
-        true -> throw({sheep, sheep, 400, <<<<"Param ">>/binary, Name/binary, <<" is in wrong format">>/binary>>})
+            ok = validate(Name, Key, KeyType, ErrorFun),
+            ok = validate(Name, Value, ValueType, ErrorFun);
+        true -> ErrorFun(wrong, normalize_key(Name))
     end;
 
-validate(Name, Value, [Type]) ->
-    ok = validate(Name, Value, fun is_list/1),
-    lists:foreach(fun(SubValue) -> ok = validate(Name, SubValue, Type) end, Value).
+validate(Name, Value, [Type], ErrorFun) ->
+    ok = validate(Name, Value, fun is_list/1, ErrorFun),
+    lists:foreach(fun(SubValue) -> ok = validate(Name, SubValue, Type, ErrorFun) end, Value).
 
 filter_params(Fun, {Params}) ->
     {lists:filter(fun({Name, _}) -> Fun(Name) end, Params)}.
@@ -167,14 +138,14 @@ parse_payload(Payload, ContentType) ->
                      try
                          jiffy:decode(Payload)
                      catch
-                         _:_ -> throw({sheep, sheep, 500, <<"Can't parse JSON payload">>})
+                         _:_ -> throw({sheep, sheep, 500, <<"can't parse JSON payload">>})
                      end;
                  <<"application/x-msgpack">> ->
                      try
                          {ok, ParamsMsgPack} = msgpack:unpack(Payload, [{format, jiffy}]),
                          ParamsMsgPack
                      catch
-                         _:_ -> throw({sheep, sheep, 500, <<"Can't parse MsgPack payload">>})
+                         _:_ -> throw({sheep, sheep, 500, <<"can't parse MsgPack payload">>})
                      end
              end,
     normalize_params(Params).

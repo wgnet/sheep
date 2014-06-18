@@ -127,9 +127,9 @@ body_params(Req, ContentType) ->
 
 generate_payload(Data, ContentType) ->
     case ContentType of
-        <<"*/*">> -> jiffy:encode(Data);
         <<"application/json">> -> jiffy:encode(Data);
-        <<"application/x-msgpack">> -> msgpack:pack(Data, [{format, jiffy}])
+        <<"application/x-msgpack">> -> msgpack:pack(Data, [{format, jiffy}]);
+        _AnyOtherContentType -> jiffy:encode(Data)
     end.
 
 parse_payload(Payload, ContentType) ->

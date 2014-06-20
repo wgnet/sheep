@@ -146,7 +146,8 @@ parse_payload(Payload, ContentType) ->
                          ParamsMsgPack
                      catch
                          _:_ -> throw({sheep, sheep, 500, <<"can't parse MsgPack payload">>})
-                     end
+                     end;
+                 _ -> Payload
              end,
     normalize_params(Params).
 

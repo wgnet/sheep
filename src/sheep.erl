@@ -3,7 +3,7 @@
 -behaviour(cowboy_sub_protocol).
 
 -export([upgrade/4]).
--export([param/5, param/4, validate/4, filter_params/2, parse_payload/2, generate_payload/2]).
+-export([param/5, param/4, validate/4, filter_params/2, parse_payload/2, generate_payload/2, normalize_params/1]).
 
 upgrade(Req, Env, Handler, HandlerOpts) ->
     {ContentType, Req1} = cowboy_req:header(<<"content-type">>, Req, <<"application/json">>),

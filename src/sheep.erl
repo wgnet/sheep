@@ -147,7 +147,12 @@ parse_payload(Payload, ContentType) ->
                      catch
                          _:_ -> throw({sheep, sheep, 500, <<"can't parse MsgPack payload">>})
                      end;
-                 _ -> Payload
+                 _ ->
+                     try
+                         {cow_qs:parse_qs(Payload)}
+                     catch
+                         _:_ -> Payload
+                     end
              end,
     normalize_params(Params).
 

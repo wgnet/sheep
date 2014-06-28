@@ -12,7 +12,7 @@ upgrade(Req, Env, Handler, HandlerOpts) ->
         {ok, HandlerFun, Req3} = handler_fun(Req2, Handler, HandlerOpts),
         {ok, BindingsParams, QueryParams, BodyParams, Req4} = slurp_request(Req3, ContentType),
         {ok, Response} = Handler:HandlerFun(BindingsParams, QueryParams, BodyParams),
-        {ok, Req5} = spit_response(Req4, 200, Response, AcceptContentType),
+        {ok, Req5} = spit_response(Req4, Response, AcceptContentType),
         {ok, Req5, Env}
     catch
         throw:{sheep, Tag, Code, Message} ->
@@ -101,6 +101,12 @@ slurp_request(Req, ContentType) ->
     {QueryParams, Req2} = query_params(Req1),
     {BodyParams, Req3} = body_params(Req2, ContentType),
     {ok, BindingsParams, QueryParams, BodyParams, Req3}.
+
+spit_response(Req, {Code, Response}, ContentType) ->
+    spit_response(Req, Code, Response, ContentType);
+
+spit_response(Req, Response, ContentType) ->
+    spit_response(Req, 200, Response, ContentType).
 
 spit_response(Req, Code, Response, ContentType) ->
     Body = generate_payload(Response, ContentType),

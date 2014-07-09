@@ -11,12 +11,13 @@ upgrade(Req, Env, Handler, HandlerOpts) ->
     try
         {ok, HandlerFun, Req3} = handler_fun(Req2, Handler, HandlerOpts),
         {ok, BindingsParams, QueryParams, BodyParams, Req4} = slurp_request(Req3, ContentType),
-        {ok, Response} = Handler:HandlerFun(BindingsParams, QueryParams, BodyParams),
-        {ok, Req5} = spit_response(Req4, Response, AcceptContentType),
+        {ok, CodeAndResponse} = Handler:HandlerFun(BindingsParams, QueryParams, BodyParams),
+        {Code, Response} = parse_code_and_response(CodeAndResponse, 200),
+        {ok, Req5} = spit_response(Req4, Code, Response, AcceptContentType),
         {ok, Req5, Env}
     catch
-        throw:{sheep, Tag, Code, Message} ->
-            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag, Code, Message, null),
+        throw:{sheep, Tag, CodeE, Message} ->
+            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag, CodeE, Message, null),
             {ok, ReqE, Env};
         _:Error ->
             {ok, ReqE} = process_error(Req, AcceptContentType, Handler, sheep, 500, <<"unexpected error">>, Error),
@@ -35,11 +36,18 @@ handler_fun(Req, Handler, HandlerOpts) ->
     end.
 
 process_error(Req, AcceptContentType, Handler, Tag, Code, Message, Error) ->
-    ResponseContent = case erlang:function_exported(Handler, error_handler, 5) of
+    CodeAndResponse = case erlang:function_exported(Handler, error_handler, 5) of
                           true -> Handler:error_handler(Req, Tag, Code, Message, Error);
                           false -> {[{<<"tag">>, Tag}, {<<"message">>, Message}]}
                       end,
-    spit_response(Req, Code, ResponseContent, AcceptContentType).
+    {FinalCode, Response} = parse_code_and_response(CodeAndResponse, Code),
+    spit_response(Req, FinalCode, Response, AcceptContentType).
+
+parse_code_and_response({Code, Response}, _DefaultCode) ->
+    {Code, Response};
+
+parse_code_and_response(Response, DefaultCode) ->
+    {DefaultCode, Response}.
 
 param({Params}, Name, Type, Default, ErrorFun) ->
     NormalizedName = normalize_key(Name),
@@ -101,12 +109,6 @@ slurp_request(Req, ContentType) ->
     {QueryParams, Req2} = query_params(Req1),
     {BodyParams, Req3} = body_params(Req2, ContentType),
     {ok, BindingsParams, QueryParams, BodyParams, Req3}.
-
-spit_response(Req, {Code, Response}, ContentType) ->
-    spit_response(Req, Code, Response, ContentType);
-
-spit_response(Req, Response, ContentType) ->
-    spit_response(Req, 200, Response, ContentType).
 
 spit_response(Req, Code, Response, ContentType) ->
     Body = generate_payload(Response, ContentType),

@@ -141,28 +141,27 @@ generate_payload(Data, ContentType) ->
     end.
 
 parse_payload(Payload, ContentType) ->
-    Params = case ContentType of
-                 <<"application/json">> ->
-                     try
-                         jiffy:decode(Payload)
-                     catch
-                         _:_ -> throw({sheep, sheep, 500, <<"can't parse JSON payload">>})
-                     end;
-                 <<"application/x-msgpack">> ->
-                     try
-                         {ok, ParamsMsgPack} = msgpack:unpack(Payload, [{format, jiffy}]),
+    case ContentType of
+        <<"application/json">> ->
+            try
+                jiffy:decode(Payload)
+            catch
+                _:_ -> throw({sheep, sheep, 500, <<"can't parse JSON payload">>})
+            end;
+        <<"application/x-msgpack">> ->
+            try
+                {ok, ParamsMsgPack} = msgpack:unpack(Payload, [{format, jiffy}]),
                          ParamsMsgPack
-                     catch
-                         _:_ -> throw({sheep, sheep, 500, <<"can't parse MsgPack payload">>})
-                     end;
-                 _ ->
-                     try
-                         {cow_qs:parse_qs(Payload)}
-                     catch
-                         _:_ -> Payload
-                     end
-             end,
-    normalize_params(Params).
+            catch
+                _:_ -> throw({sheep, sheep, 500, <<"can't parse MsgPack payload">>})
+            end;
+        _ ->
+            try
+                normalize_params({cow_qs:parse_qs(Payload)})
+            catch
+                _:_ -> Payload
+            end
+    end.
 
 normalize_params({Tuples}) when is_list(Tuples) ->
     {lists:map(fun({Key, Value}) ->

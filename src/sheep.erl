@@ -3,7 +3,7 @@
 -behaviour(cowboy_sub_protocol).
 
 -export([upgrade/4]).
--export([param/5, param/4, validate/4, filter_params/2, parse_payload/2, generate_payload/2, normalize_params/1]).
+-export([param/5, param/4, params/4, validate/4, nullable/2, parse_payload/2, generate_payload/2, normalize_params/1]).
 
 upgrade(Req, Env, Handler, HandlerOpts) ->
     {ContentType, Req1} = cowboy_req:header(<<"content-type">>, Req, <<"application/json">>),
@@ -67,6 +67,17 @@ param({Params}, Name, Type, ErrorFun) ->
             Value
     end.
 
+params({Params}, FilterFun, Type, ErrorFun) ->
+    FilteredParams = lists:filter(fun({Name, _}) -> FilterFun(Name) end, Params),
+    lists:foreach(fun({Name, Value}) -> validate(Name, Value, Type, ErrorFun) end, FilteredParams),
+    {FilteredParams}.
+
+nullable(ValidateFun, Value) ->
+    if
+        Value == null -> ok;
+        true -> ValidateFun(Value)
+    end.
+
 validate(Name, Value, ValidateFun, ErrorFun) when is_function(ValidateFun) ->
     ValidateResult = ValidateFun(Value),
     if
@@ -80,14 +91,26 @@ validate(_Name, _Value, any, _ErrorFun) ->
 validate(Name, Value, binary, ErrorFun) ->
     ok = validate(Name, Value, fun is_binary/1, ErrorFun);
 
+validate(Name, Value, nullable_binary, ErrorFun) ->
+    ok = validate(Name, Value, fun(V) -> nullable(fun is_binary/1, V) end, ErrorFun);
+
 validate(Name, Value, integer, ErrorFun) ->
     ok = validate(Name, Value, fun is_integer/1, ErrorFun);
+
+validate(Name, Value, nullable_integer, ErrorFun) ->
+    ok = validate(Name, Value, fun(V) -> nullable(fun is_integer/1, V) end, ErrorFun);
 
 validate(Name, Value, float, ErrorFun) ->
     ok = validate(Name, Value, fun is_float/1, ErrorFun);
 
+validate(Name, Value, nullable_float, ErrorFun) ->
+    ok = validate(Name, Value, fun(V) -> nullable(fun is_float/1, V) end, ErrorFun);
+
 validate(Name, Value, boolean, ErrorFun) ->
     ok = validate(Name, Value, fun is_boolean/1, ErrorFun);
+
+validate(Name, Value, nullable_boolean, ErrorFun) ->
+    ok = validate(Name, Value, fun(V) -> nullable(fun is_boolean/1, V) end, ErrorFun);
 
 validate(Name, Value, {KeyType, ValueType}, ErrorFun) ->
     case Value of
@@ -100,9 +123,6 @@ validate(Name, Value, {KeyType, ValueType}, ErrorFun) ->
 validate(Name, Value, [Type], ErrorFun) ->
     ok = validate(Name, Value, fun is_list/1, ErrorFun),
     lists:foreach(fun(SubValue) -> ok = validate(Name, SubValue, Type, ErrorFun) end, Value).
-
-filter_params(Fun, {Params}) ->
-    {lists:filter(fun({Name, _}) -> Fun(Name) end, Params)}.
 
 slurp_request(Req, ContentType) ->
     {BindingsParams, Req1} = bindings_params(Req),

@@ -112,11 +112,18 @@ validate(Name, Value, boolean, ErrorFun) ->
 validate(Name, Value, nullable_boolean, ErrorFun) ->
     ok = validate(Name, Value, fun(V) -> nullable(fun is_boolean/1, V) end, ErrorFun);
 
+validate(Name, Value, {ValueType}, ErrorFun) ->
+    case Value of
+        {V} ->
+            ok = validate(Name, V, ValueType, ErrorFun);
+        true -> ErrorFun(wrong, normalize_key(Name))
+    end;
+
 validate(Name, Value, {KeyType, ValueType}, ErrorFun) ->
     case Value of
-        {Key, Value} ->
-            ok = validate(Name, Key, KeyType, ErrorFun),
-            ok = validate(Name, Value, ValueType, ErrorFun);
+        {K, V} ->
+            ok = validate(Name, K, KeyType, ErrorFun),
+            ok = validate(Name, V, ValueType, ErrorFun);
         true -> ErrorFun(wrong, normalize_key(Name))
     end;
 

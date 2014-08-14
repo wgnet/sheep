@@ -17,10 +17,13 @@ upgrade(Req, Env, Handler, HandlerOpts) ->
         {ok, Req5, Env}
     catch
         throw:{sheep, Tag, CodeE, Message} ->
-            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag, CodeE, Message, null),
+            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag, CodeE, Message, null, erlang:get_stacktrace()),
+            {ok, ReqE, Env};
+        throw:{sheep, Tag, CodeE, Message, StackTrace} ->
+            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag, CodeE, Message, null, erlang:get_stacktrace() ++ StackTrace),
             {ok, ReqE, Env};
         _:Error ->
-            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, sheep, 500, <<"unexpected error">>, Error),
+            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, sheep, 500, <<"unexpected error">>, Error, erlang:get_stacktrace()),
             {ok, ReqE, Env}
     end.
 
@@ -35,9 +38,9 @@ handler_fun(Req, Handler, HandlerOpts) ->
             end
     end.
 
-process_error(Req, AcceptContentType, Handler, Tag, Code, Message, Error) ->
-    CodeAndResponse = case erlang:function_exported(Handler, error_handler, 5) of
-                          true -> Handler:error_handler(Req, Tag, Code, Message, Error);
+process_error(Req, AcceptContentType, Handler, Tag, Code, Message, Error, StackTrace) ->
+    CodeAndResponse = case erlang:function_exported(Handler, error_handler, 6) of
+                          true -> Handler:error_handler(Req, Tag, Code, Message, Error, StackTrace);
                           false -> {[{<<"tag">>, Tag}, {<<"message">>, Message}]}
                       end,
     {FinalCode, Response} = parse_code_and_response(CodeAndResponse, Code),

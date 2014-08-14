@@ -1,13 +1,13 @@
 -module(math_magic).
 
 -export([init/3]).
--export([error_handler/5, read/3]).
+-export([error_handler/6, read/3]).
 
 init(_Transport, Req, _Opts) ->
     {upgrade, protocol, sheep, Req, []}.
 
-error_handler(_Req, Tag, _Code, Message, Error) ->
-    lager:error("~p: ~p ~p ~p", [Tag, Message, Error, erlang:get_stacktrace()]),
+error_handler(_Req, Tag, _Code, Message, Error, StackTrace) ->
+    lager:error("~p: ~p ~p ~p", [Tag, Message, Error, StackTrace]),
     {[{<<"error">>, Message}]}.
 
 param_error_handler(missing, Name) ->

@@ -122,7 +122,7 @@ validate(Name, Value, {ValueType}, ErrorFun) ->
     case Value of
         {V} ->
             ok = validate(Name, V, ValueType, ErrorFun);
-        true -> ErrorFun(wrong, normalize_key(Name))
+        _ -> ErrorFun(wrong, normalize_key(Name))
     end;
 
 validate(Name, Value, {KeyType, ValueType}, ErrorFun) ->
@@ -130,7 +130,7 @@ validate(Name, Value, {KeyType, ValueType}, ErrorFun) ->
         {K, V} ->
             ok = validate(Name, K, KeyType, ErrorFun),
             ok = validate(Name, V, ValueType, ErrorFun);
-        true -> ErrorFun(wrong, normalize_key(Name))
+        _ -> ErrorFun(wrong, normalize_key(Name))
     end;
 
 validate(Name, Value, [Type], ErrorFun) ->

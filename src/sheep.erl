@@ -16,11 +16,14 @@ upgrade(Req, Env, Handler, HandlerOpts) ->
         {ok, Req5} = spit_response(Req4, Code, Response, AcceptContentType),
         {ok, Req5, Env}
     catch
+        throw:{sheep, Tag, CodeE, Message, StackTrace} ->
+            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag, CodeE, Message, null, StackTrace ++ erlang:get_stacktrace()),
+            {ok, ReqE, Env};
         throw:{sheep, Tag, CodeE, Message} ->
             {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag, CodeE, Message, null, erlang:get_stacktrace()),
             {ok, ReqE, Env};
-        throw:{sheep, Tag, CodeE, Message, StackTrace} ->
-            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag, CodeE, Message, null, erlang:get_stacktrace() ++ StackTrace),
+        throw:{Error, StackTrace} ->
+            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, sheep, 500, <<"unexpected error">>, Error, StackTrace ++ erlang:get_stacktrace()),
             {ok, ReqE, Env};
         _:Error ->
             {ok, ReqE} = process_error(Req, AcceptContentType, Handler, sheep, 500, <<"unexpected error">>, Error, erlang:get_stacktrace()),

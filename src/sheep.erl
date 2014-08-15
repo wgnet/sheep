@@ -9,6 +9,10 @@ upgrade(Req, Env, Handler, HandlerOpts) ->
     {ContentType, Req1} = cowboy_req:header(<<"content-type">>, Req, <<"application/json">>),
     {AcceptContentType, Req2} = cowboy_req:header(<<"accept">>, Req1, <<"application/json">>),
     try
+        case erlang:function_exported(Handler, debug_request_handler, 1) of
+            true -> Handler:debug_request_handler(Req2);
+            false -> ok
+        end,
         {ok, HandlerFun, Req3} = handler_fun(Req2, Handler, HandlerOpts),
         {ok, BindingsParams, QueryParams, BodyParams, Req4} = slurp_request(Req3, ContentType),
         {ok, CodeAndResponse} = Handler:HandlerFun(BindingsParams, QueryParams, BodyParams),

@@ -152,12 +152,20 @@ spit_response(Req, Code, Response, ContentType) ->
     cowboy_req:reply(Code, [{<<"content-type">>, ContentType}], Body, Req).
 
 bindings_params(Req) ->
-    {Bindings, Req1} = cowboy_req:bindings(Req),
+    {Bindings, Req1} = try cowboy_req:bindings(Req)
+    catch
+         _:_Error ->
+            throw({sheep, sheep, 400, <<"can't parse request">>})
+    end,
     NormalizedBindings = normalize_params({Bindings}),
     {NormalizedBindings, Req1}.
 
 query_params(Req) ->
-    {QueryParams, Req1} = cowboy_req:qs_vals(Req),
+    {QueryParams, Req1} = try cowboy_req:qs_vals(Req)
+    catch
+         _:_Error ->
+            throw({sheep, sheep, 400, <<"can't parse request">>})
+    end,
     NormalizedQueryParams = normalize_params({QueryParams}),
     {NormalizedQueryParams, Req1}.
 

@@ -27,10 +27,20 @@ upgrade(Req, Env, Handler, HandlerOpts) ->
             true -> Handler:debug_request_handler(Req2);
             false -> ok
         end,
-        {ok, HandlerFun, Req3} = handler_fun(Req2, Handler, HandlerOpts),
-        {ok, BindingsParams, QueryParams, BodyParams, Req4} = slurp_request(Req3, ContentType),
-        {ok, CodeAndResponse} = Handler:HandlerFun(BindingsParams, QueryParams, BodyParams),
+
+        {ok, BindingsParams, QueryParams, BodyParams, Req3} = slurp_request(Req2, ContentType),
+
+        {CodeAndResponse, Req4} =
+            case handler_fun(Req3, Handler, HandlerOpts) of
+                {fun_3, HandlerFun, Rq} ->
+                    {ok, CR} = Handler:HandlerFun(BindingsParams, QueryParams, BodyParams),
+                    {CR, Rq};
+                {fun_5, HandlerFun, Rq} ->
+                    {ok, CR, Rq2} = Handler:HandlerFun(BindingsParams, QueryParams, BodyParams, Rq, HandlerOpts),
+                    {CR, Rq2}
+            end,
         {Code, Response} = parse_code_and_response(CodeAndResponse, 200),
+
         {ok, Req5} = spit_response(Req4, Code, Response, AcceptContentType),
         {ok, Req5, Env}
     catch
@@ -53,7 +63,7 @@ upgrade(Req, Env, Handler, HandlerOpts) ->
     end.
 
 
--spec handler_fun(cowboy_req:req(), module(), any()) -> {ok, atom(), cowboy_req:req()}.
+-spec handler_fun(cowboy_req:req(), module(), any()) -> {fun_3 | fun_5, atom(), cowboy_req:req()}.
 handler_fun(Req, Handler, HandlerOpts) ->
     {Method, Req1} = cowboy_req:method(Req),
     HandlerFuns =  HandlerOpts ++ [{<<"POST">>, create},
@@ -63,9 +73,12 @@ handler_fun(Req, Handler, HandlerOpts) ->
     case lists:keyfind(Method, 1, HandlerFuns) of
         false -> throw({sheep, sheep, 405, <<"unknown request">>});
         {Method, HandlerFun} ->
-            case erlang:function_exported(Handler, HandlerFun, 3) of
-                true -> {ok, HandlerFun, Req1};
-                false -> throw({sheep, sheep, 405, <<"unknown request">>})
+            F3 = erlang:function_exported(Handler, HandlerFun, 3),
+            F5 = erlang:function_exported(Handler, HandlerFun, 5),
+            case {F3, F5} of
+                {true, _} -> {fun_3, HandlerFun, Req1};
+                {_, true} -> {fun_5, HandlerFun, Req1};
+                _ -> throw({sheep, sheep, 405, <<"unknown request">>})
             end
     end.
 

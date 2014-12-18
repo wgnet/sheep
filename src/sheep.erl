@@ -3,8 +3,22 @@
 -behaviour(cowboy_sub_protocol).
 
 -export([upgrade/4]).
--export([param/5, param/4, params/4, validate/4, nullable/2, parse_payload/2, generate_payload/2, normalize_params/1]).
+-export([param/5, param/4, params/4,
+         validate/4, nullable/2,
+         parse_payload/2, generate_payload/2,
+         normalize_params/1]).
 
+-type(json_key() :: any()).
+-type(json_value() :: any()).
+-type(json_value_type() :: any()).
+-type(json_obj() :: any()).
+
+-type(mime_type() :: binary()).
+-type(http_code() :: integer()).
+
+
+-spec upgrade(cowboy_req:req(), cowboy_middleware:env(), module(), any()) ->
+                     {ok, cowboy_req:req(), cowboy_middleware:env()}.
 upgrade(Req, Env, Handler, HandlerOpts) ->
     {ContentType, Req1} = cowboy_req:header(<<"content-type">>, Req, <<"application/json">>),
     {AcceptContentType, Req2} = cowboy_req:header(<<"accept">>, Req1, <<"application/json">>),
@@ -21,22 +35,32 @@ upgrade(Req, Env, Handler, HandlerOpts) ->
         {ok, Req5, Env}
     catch
         throw:{sheep, Tag, CodeE, Message, StackTrace} ->
-            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag, CodeE, Message, null, StackTrace ++ erlang:get_stacktrace()),
+            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag,
+                                       CodeE, Message, null, StackTrace ++ erlang:get_stacktrace()),
             {ok, ReqE, Env};
         throw:{sheep, Tag, CodeE, Message} ->
-            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag, CodeE, Message, null, erlang:get_stacktrace()),
+            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, Tag,
+                                       CodeE, Message, null, erlang:get_stacktrace()),
             {ok, ReqE, Env};
         throw:{Error, StackTrace} ->
-            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, sheep, 500, <<"unexpected error">>, Error, StackTrace ++ erlang:get_stacktrace()),
+            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, sheep,
+                                       500, <<"unexpected error">>, Error, StackTrace ++ erlang:get_stacktrace()),
             {ok, ReqE, Env};
         _:Error ->
-            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, sheep, 500, <<"unexpected error">>, Error, erlang:get_stacktrace()),
+            {ok, ReqE} = process_error(Req, AcceptContentType, Handler, sheep,
+                                       500, <<"unexpected error">>, Error, erlang:get_stacktrace()),
             {ok, ReqE, Env}
     end.
 
+
+-spec handler_fun(cowboy_req:req(), module(), any()) -> {ok, atom(), cowboy_req:req()}.
 handler_fun(Req, Handler, HandlerOpts) ->
     {Method, Req1} = cowboy_req:method(Req),
-    case lists:keyfind(Method, 1, HandlerOpts ++ [{<<"POST">>, create}, {<<"GET">>, read}, {<<"PUT">>, update}, {<<"DELETE">>, delete}]) of
+    HandlerFuns =  HandlerOpts ++ [{<<"POST">>, create},
+                                   {<<"GET">>, read},
+                                   {<<"PUT">>, update},
+                                   {<<"DELETE">>, delete}],
+    case lists:keyfind(Method, 1, HandlerFuns) of
         false -> throw({sheep, sheep, 405, <<"unknown request">>});
         {Method, HandlerFun} ->
             case erlang:function_exported(Handler, HandlerFun, 3) of
@@ -45,6 +69,9 @@ handler_fun(Req, Handler, HandlerOpts) ->
             end
     end.
 
+
+-spec process_error(cowboy_req:req(), mime_type(), module(), atom(),
+                    http_code(), binary(), any(), list()) -> {ok, cowboy_req:req()}.
 process_error(Req, AcceptContentType, Handler, Tag, Code, Message, Error, StackTrace) ->
     CodeAndResponse = case erlang:function_exported(Handler, error_handler, 6) of
                           true -> Handler:error_handler(Req, Tag, Code, Message, Error, StackTrace);
@@ -53,12 +80,17 @@ process_error(Req, AcceptContentType, Handler, Tag, Code, Message, Error, StackT
     {FinalCode, Response} = parse_code_and_response(CodeAndResponse, Code),
     spit_response(Req, FinalCode, Response, AcceptContentType).
 
+
+-spec parse_code_and_response(any(), integer()) -> {http_code(), any()}.
 parse_code_and_response({Code, Response}, _DefaultCode) ->
     {Code, Response};
 
 parse_code_and_response(Response, DefaultCode) ->
     {DefaultCode, Response}.
 
+
+
+-spec param(json_obj(), json_key(), json_value_type(), json_value(), function()) -> json_value().
 param({Params}, Name, Type, Default, ErrorFun) ->
     NormalizedName = normalize_key(Name),
     case lists:keyfind(NormalizedName, 1, Params) of
@@ -68,6 +100,7 @@ param({Params}, Name, Type, Default, ErrorFun) ->
             Value
     end.
 
+-spec param(json_obj(), json_key(), json_value_type(), function()) -> json_value().
 param({Params}, Name, Type, ErrorFun) ->
     NormalizedName = normalize_key(Name),
     case lists:keyfind(NormalizedName, 1, Params) of
@@ -77,22 +110,27 @@ param({Params}, Name, Type, ErrorFun) ->
             Value
     end.
 
+
+-spec params(json_obj(), function(), json_value_type(),  function()) -> json_obj().
 params({Params}, FilterFun, Type, ErrorFun) ->
     FilteredParams = lists:filter(fun({Name, _}) -> FilterFun(Name) end, Params),
     lists:foreach(fun({Name, Value}) -> validate(Name, Value, Type, ErrorFun) end, FilteredParams),
     {FilteredParams}.
 
+
+-spec nullable(function(), json_value()) -> json_value().
 nullable(ValidateFun, Value) ->
     if
         Value == null -> ok;
         true -> ValidateFun(Value)
     end.
 
+
+-spec validate(json_key(), json_value(), json_value_type() | function(), function()) -> ok.
 validate(Name, Value, ValidateFun, ErrorFun) when is_function(ValidateFun) ->
-    ValidateResult = ValidateFun(Value),
-    if
-        ValidateResult == false -> ErrorFun(wrong, normalize_key(Name));
-        true -> ok
+    case ValidateFun(Value) of
+        true -> ok;
+        false -> ErrorFun(wrong, normalize_key(Name))
     end;
 
 validate(_Name, _Value, any, _ErrorFun) ->
@@ -141,16 +179,22 @@ validate(Name, Value, [Type], ErrorFun) ->
     ok = validate(Name, Value, fun is_list/1, ErrorFun),
     lists:foreach(fun(SubValue) -> ok = validate(Name, SubValue, Type, ErrorFun) end, Value).
 
+
+-spec slurp_request(cowboy_req:req(), binary()) -> {ok, json_obj(), json_obj(), json_obj(), cowboy_req:req()}.
 slurp_request(Req, ContentType) ->
     {BindingsParams, Req1} = bindings_params(Req),
     {QueryParams, Req2} = query_params(Req1),
     {BodyParams, Req3} = body_params(Req2, ContentType),
     {ok, BindingsParams, QueryParams, BodyParams, Req3}.
 
+
+-spec spit_response(cowboy_req:req(), http_code(), json_obj(), binary()) -> {ok, cowboy_req:req()}.
 spit_response(Req, Code, Response, ContentType) ->
     Body = generate_payload(Response, ContentType),
     cowboy_req:reply(Code, [{<<"content-type">>, ContentType}], Body, Req).
 
+
+-spec bindings_params(cowboy_req:req()) -> {json_obj(), cowboy_req:req()}.
 bindings_params(Req) ->
     {Bindings, Req1} = try cowboy_req:bindings(Req)
     catch
@@ -160,6 +204,8 @@ bindings_params(Req) ->
     NormalizedBindings = normalize_params({Bindings}),
     {NormalizedBindings, Req1}.
 
+
+-spec query_params(cowboy_req:req()) -> {json_obj(), cowboy_req:req()}.
 query_params(Req) ->
     {QueryParams, Req1} = try cowboy_req:qs_vals(Req)
     catch
@@ -169,6 +215,8 @@ query_params(Req) ->
     NormalizedQueryParams = normalize_params({QueryParams}),
     {NormalizedQueryParams, Req1}.
 
+
+-spec body_params(cowboy_req:req(), binary()) -> {json_obj(), cowboy_req:req()}.
 body_params(Req, ContentType) ->
     case cowboy_req:has_body(Req) of
         true ->
@@ -178,6 +226,8 @@ body_params(Req, ContentType) ->
         false -> {{[]}, Req}
     end.
 
+
+-spec generate_payload(json_obj(), binary()) -> iolist().
 generate_payload(Data, ContentType) ->
     case ContentType of
         <<"application/json">> -> jiffy:encode(Data);
@@ -185,6 +235,8 @@ generate_payload(Data, ContentType) ->
         _AnyOtherContentType -> jiffy:encode(Data)
     end.
 
+
+-spec parse_payload(binary(), binary()) -> json_obj().
 parse_payload(Payload, ContentType) ->
     case ContentType of
         <<"application/json">> ->
@@ -208,6 +260,8 @@ parse_payload(Payload, ContentType) ->
             end
     end.
 
+
+-spec normalize_params(any()) -> any().
 normalize_params({Tuples}) when is_list(Tuples) ->
     {lists:map(fun({Key, Value}) ->
                        {normalize_key(Key), normalize_params(Value)}

@@ -1,7 +1,7 @@
 {application, sheep,
  [
   {description, "Cowboy protocol and set of utility funs for building JSON/MsgPack APIs"},
-  {vsn, git},
+  {vsn, "1.1"},
   {registered, []},
   {applications, [
                   kernel,

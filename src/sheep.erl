@@ -17,11 +17,15 @@
 -type(http_code() :: integer()).
 
 
+-define(CT_JSON, <<"application/json">>).
+-define(CT_MSG_PACK, <<"application/x-msgpack">>).
+
+
 -spec upgrade(cowboy_req:req(), cowboy_middleware:env(), module(), any()) ->
                      {ok, cowboy_req:req(), cowboy_middleware:env()}.
 upgrade(Req, Env, Handler, HandlerOpts) ->
-    {ContentType, Req1} = cowboy_req:header(<<"content-type">>, Req, <<"application/json">>),
-    {AcceptContentType, Req2} = cowboy_req:header(<<"accept">>, Req1, <<"application/json">>),
+    {ContentType, Req1} = cowboy_req:header(<<"content-type">>, Req, ?CT_JSON),
+    {AcceptContentType, Req2} = cowboy_req:header(<<"accept">>, Req1, ?CT_JSON),
     try
         case erlang:function_exported(Handler, debug_request_handler, 1) of
             true -> Handler:debug_request_handler(Req2);
@@ -204,7 +208,8 @@ slurp_request(Req, ContentType) ->
 -spec spit_response(cowboy_req:req(), http_code(), json_obj(), binary()) -> {ok, cowboy_req:req()}.
 spit_response(Req, Code, Response, ContentType) ->
     Body = generate_payload(Response, ContentType),
-    cowboy_req:reply(Code, [{<<"content-type">>, ContentType}], Body, Req).
+    ContentType2 = check_content_type(ContentType),
+    cowboy_req:reply(Code, [{<<"content-type">>, ContentType2}], Body, Req).
 
 
 -spec bindings_params(cowboy_req:req()) -> {json_obj(), cowboy_req:req()}.
@@ -243,8 +248,8 @@ body_params(Req, ContentType) ->
 -spec generate_payload(json_obj(), binary()) -> iolist().
 generate_payload(Data, ContentType) ->
     case ContentType of
-        <<"application/json">> -> jiffy:encode(Data);
-        <<"application/x-msgpack">> -> msgpack:pack(Data, [{format, jiffy}]);
+        ?CT_JSON -> jiffy:encode(Data);
+        ?CT_MSG_PACK -> msgpack:pack(Data, [{format, jiffy}]);
         _AnyOtherContentType -> jiffy:encode(Data)
     end.
 
@@ -252,16 +257,16 @@ generate_payload(Data, ContentType) ->
 -spec parse_payload(binary(), binary()) -> json_obj().
 parse_payload(Payload, ContentType) ->
     case ContentType of
-        <<"application/json">> ->
+        ?CT_JSON ->
             try
                 jiffy:decode(Payload)
             catch
                 _:_ -> throw({sheep, sheep, 500, <<"can't parse JSON payload">>})
             end;
-        <<"application/x-msgpack">> ->
+        ?CT_MSG_PACK ->
             try
                 {ok, ParamsMsgPack} = msgpack:unpack(Payload, [{format, jiffy}]),
-                         ParamsMsgPack
+                ParamsMsgPack
             catch
                 _:_ -> throw({sheep, sheep, 500, <<"can't parse MsgPack payload">>})
             end;
@@ -272,6 +277,12 @@ parse_payload(Payload, ContentType) ->
                 _:_ -> Payload
             end
     end.
+
+
+-spec check_content_type(binary()) -> binary().
+check_content_type(?CT_JSON) -> ?CT_JSON;
+check_content_type(?CT_MSG_PACK) -> ?CT_MSG_PACK;
+check_content_type(_) -> ?CT_JSON.
 
 
 -spec normalize_params(any()) -> any().
